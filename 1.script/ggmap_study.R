@@ -20,7 +20,7 @@ setwd("C:/DJ/R/02.project/GIS")
 
 #install.packages("vctrs")
 
-pkg = c('dplyr','ggplot2','ggmap')
+pkg = c('dplyr','ggplot2','ggmap',)
 
 sapply(pkg,require,character.only = T)
 
@@ -70,3 +70,23 @@ ggmap(map) + stat_density_2d(data=wifi, aes(x=lon, y=lat))
 
 ggmap(map) + stat_density_2d(data=wifi, aes(x=lon, y=lat, fill=..level.., alpha=..level..),
                              geom='polygon', size=2, bins=30) #alpha :투명도 
+
+p = ggmap(map) + stat_density_2d(data=wifi, aes(x=lon, y=lat, fill=..level.., alpha=..level..),
+                                  geom='polygon', size=7, bins=28)
+
+p + scale_fill_gradient(low='yellow', high='red')
+
+p + scale_fill_gradient(low='yellow', high='red', guide=F) + 
+  scale_alpha(range=c(0.02, 0.8), guide=F)
+
+airport <- read.csv("./0.data/airport.csv", header=T, as.is=T)
+route <- read.csv("./0.data/route.csv", header=T, as.is=T)
+
+ggmap(map) + geom_point(data=airport, aes(x=lon, y=lat))
+
+geocode(c('incheon airport', 'gimpo airport'))
+
+p <- ggmap(map) + geom_point(data=airport, aes(x=lon, y=lat))
+p + geom_line(data=route, aes(x=lon, y=lat, group=id))
+
+head(route[order(route$id),])
