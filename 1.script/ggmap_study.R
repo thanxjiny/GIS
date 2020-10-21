@@ -20,10 +20,16 @@ setwd("C:/DJ/R/02.project/GIS")
 
 #install.packages("vctrs")
 
-pkg = c('dplyr','ggplot2','ggmap',)
+pkg = c('dplyr','ggplot2','ggmap', 'tidyverse','leaflet','raster', 'rgdal', 'rmapshaper')
 
 sapply(pkg,require,character.only = T)
 
+#install.packages('tidyverse')
+#library('tidyverse')
+#library('leaflet')
+#install.packages('raster')
+#install.packages('rgdal')
+#install.packages('rmapshaper')
 
 # error 해결  ##Google now requires an API key.
 
@@ -34,10 +40,11 @@ sapply(pkg,require,character.only = T)
 
 #AIzaSyDxUJrNLqzesrLkcT8H4BvEoX2nQP9l-xs
 
-register_google('AIzaSyCg2ceZXU60KOTidn_9Bs6lWPomohuEJLk')
+register_google('AIzaSyBFflbVkqvEtd_tqlFfBtSR0x36PZlsMgw')
 
 #■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
-# introduction ----
+# R로 점 찍고, 선 긋고, 색칠하기 -----
+# URL : https://kuduz.tistory.com/1042
 #■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
 
 ggmap(get_map(location='south korea', zoom=7))
@@ -90,3 +97,64 @@ p <- ggmap(map) + geom_point(data=airport, aes(x=lon, y=lat))
 p + geom_line(data=route, aes(x=lon, y=lat, group=id))
 
 head(route[order(route$id),])
+
+
+#■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+# R로 인터렉티브 지도 그리기  ------
+# URL : https://kuduz.tistory.com/1196
+#■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+
+leaflet() %>%
+  setView(lng=126.9784, lat=37.566, zoom=11) %>%
+  addTiles()
+
+# data load
+sb <- read.csv('./0.data/starbucks.csv') %>% as_tibble
+
+#address                                           sido  sigungu code    lat  long SIG_CD
+#<chr>                                             <chr> <chr>   <chr> <dbl> <dbl>  <int>
+#  1 "강원도 강릉시 경강로 2096 (임당동)033-645-7835 " 강원  강릉    강릉   37.8  129.  42150
+
+# 점 찍기  
+#경도(long) 위도(lat)
+
+leaflet(sb) %>%
+  setView(lng=126.9784, lat=37.566, zoom=11) %>%
+  addProviderTiles('CartoDB.Positron') %>% #### 지도 스타일 
+  addCircles(lng=~long, lat=~lat, color='#006633') ### 점 찍기
+
+# 점 색 달리 찍기 
+pal <- colorFactor("viridis", sb$sigungu)
+
+leaflet(sb) %>%
+  setView(lng=126.9784, lat=37.566, zoom=11) %>%
+  addProviderTiles('CartoDB.Positron') %>%
+  addCircles(lng=~long, lat=~lat, color=~pal(sigungu))
+
+# 마커로 표기
+leaflet(sb) %>%
+  setView(lng=127.7669, lat=35.90776, zoom=6) %>%
+  addProviderTiles('CartoDB.Positron') %>%
+  addMarkers(lng=~long, lat=~lat, label=~address)
+
+
+# 선 긋기
+sb %>%
+  filter(lat==min(lat) | lat==max(lat)) %>%
+  mutate(group=1) %>%
+  leaflet() %>%
+  setView(lng=127.7669,lat=35.90776, zoom=6) %>%
+  addProviderTiles('CartoDB.Positron') %>%
+  addCircles(lng=~long, lat=~lat) %>%
+  addPolylines(lng=~long, lat=~lat, group=~group, weight=.5)
+
+
+# 색칠하기
+korea <- shapefile('./0.data/SIG_201703/TL_SCCO_SIG.shp')
+
+korea2 <- ms_simplify(korea)
+
+
+
+
+
