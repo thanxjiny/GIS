@@ -36,6 +36,7 @@ sapply(pkg,require,character.only = T)
 #install.packages('raster')
 #install.packages('rgdal')
 #install.packages('rmapshaper')
+#install.packages("rgdal")
 
 # error 해결  ##Google now requires an API key.
 
@@ -395,3 +396,74 @@ leaflet() %>% addTiles() %>% setView(-118.456554, 34.09, 13) %>%
                                   "font-size" = "12px",
                                   "border-color" = "rgba(0,0,0,0.5)"
                                 )))
+
+# Labels without markers
+
+# <ch6> Lines and Shapes -------
+
+#library(rgdal)
+
+# From https://www.census.gov/geo/maps-data/data/cbf/cbf_state.html
+states <- readOGR("shp/cb_2013_us_state_20m.shp",
+                  layer = "cb_2013_us_state_20m", GDAL1_integer64_policy = TRUE)
+
+
+neStates <- subset(states, states$STUSPS %in% c(
+  "CT","ME","MA","NH","RI","VT","NY","NJ","PA"
+))
+
+leaflet(neStates) %>%
+  addPolygons(color = "#444444", weight = 1, smoothFactor = 0.5,
+              opacity = 1.0, fillOpacity = 0.5,
+              fillColor = ~colorQuantile("YlOrRd", ALAND)(ALAND),
+              highlightOptions = highlightOptions(color = "white", weight = 2,
+                                                  bringToFront = TRUE))
+# Highlighting shapes
+library(albersusa)
+
+fullsize <- usa_sf()
+object.size(fullsize)
+
+# Circles
+
+cities <- read.csv(textConnection("
+City,Lat,Long,Pop
+Boston,42.3601,-71.0589,645966
+Hartford,41.7627,-72.6743,125017
+New York City,40.7127,-74.0059,8406000
+Philadelphia,39.9500,-75.1667,1553000
+Pittsburgh,40.4397,-79.9764,305841
+Providence,41.8236,-71.4222,177994
+"))
+
+leaflet(cities) %>% addTiles() %>%
+  addCircles(lng = ~Long, lat = ~Lat, weight = 1,
+             radius = ~sqrt(Pop) * 30, popup = ~City
+  )
+
+## sample (seoul)
+
+lon 126.978
+lat 37.566
+
+
+cities <- read.csv(textConnection("
+City,Lat,Long,Pop
+Seul,37.566,126.978,645
+"))
+
+# Rectangles
+
+leaflet() %>% addTiles() %>%
+  addRectangles(
+    lng1=-118.456554, lat1=34.078039,
+    lng2=-118.436383, lat2=34.062717,
+    fillColor = "transparent"
+  )
+
+ ##lng1, lng2, lat1, and lat2 vector arguments that define the corners of the rectangles. 
+
+
+
+
+
