@@ -464,6 +464,379 @@ leaflet() %>% addTiles() %>%
  ##lng1, lng2, lat1, and lat2 vector arguments that define the corners of the rectangles. 
 
 
+# <ch7> Working with GeoJSON & TopoJSON @@@@@-------
+
+library(sp)
+
+# From http://eric.clst.org/Stuff/USGeoJSON and
+# https://en.wikipedia.org/wiki/List_of_United_States_counties_and_county_equivalents
+
+nycounties <- rgdal::readOGR("./0.data/json/gz_2010_us_outline_500k.json")
+
+# Or use the geojsonio equivalent:
+# nycounties <- geojsonio::geojson_read("json/nycounties.geojson", what = "sp")
+
+pal <- colorNumeric("viridis", NULL)
+
+leaflet(nycounties) %>%
+  addTiles() %>%
+  addPolygons(stroke = FALSE, smoothFactor = 0.3, fillOpacity = 1,
+              fillColor = ~pal(log10(pop)),
+              label = ~paste0(county, ": ", formatC(pop, big.mark = ","))) %>%
+  addLegend(pal = pal, values = ~log10(pop), opacity = 1.0,
+            labFormat = labelFormat(transform = function(x) round(10^x)))
 
 
+topoData <- readLines("json/us-10m.json") %>% paste(collapse = "\n")
 
+leaflet() %>% setView(lng = -98.583, lat = 39.833, zoom = 3) %>%
+  addTiles() %>%
+  addTopoJSON(topoData, weight = 1, color = "#444444", fill = FALSE)
+
+# <ch8> Raster Images-------
+
+library(raster)
+
+r <- raster("nc/oisst-sst.nc")
+pal <- colorNumeric(c("#0C2C84", "#41B6C4", "#FFFFCC"), values(r),
+                    na.color = "transparent")
+
+leaflet() %>% addTiles() %>%
+  addRasterImage(r, colors = pal, opacity = 0.8) %>%
+  addLegend(pal = pal, values = values(r),
+            title = "Surface temp")
+
+# <ch9> shiny-------
+
+## sample 1
+
+library(shiny)
+library(leaflet)
+
+r_colors <- rgb(t(col2rgb(colors()) / 255))
+names(r_colors) <- colors()
+
+ui <- fluidPage(
+  leafletOutput("mymap"),
+  p(),
+  actionButton("recalc", "New points")
+)
+
+server <- function(input, output, session) {
+  
+  points <- eventReactive(input$recalc, {
+    cbind(rnorm(40) * 2 + 13, rnorm(40) + 48)
+  }, ignoreNULL = FALSE)
+  
+  output$mymap <- renderLeaflet({
+    leaflet() %>%
+      addProviderTiles(providers$Stamen.TonerLite,
+                       options = providerTileOptions(noWrap = TRUE)
+      ) %>%
+      addMarkers(data = points())
+  })
+}
+
+shinyApp(ui, server)
+
+## sample 2
+
+library(shiny)
+library(leaflet)
+library(RColorBrewer)
+
+ui <- bootstrapPage(
+  tags$style(type = "text/css", "html, body {width:100%;height:100%}"),
+  leafletOutput("map", width = "100%", height = "100%"),
+  absolutePanel(top = 10, right = 10,
+                sliderInput("range", "Magnitudes", min(quakes$mag), max(quakes$mag),
+                            value = range(quakes$mag), step = 0.1
+                ),
+                selectInput("colors", "Color Scheme",
+                            rownames(subset(brewer.pal.info, category %in% c("seq", "div")))
+                ),
+                checkboxInput("legend", "Show legend", TRUE)
+  )
+)
+
+server <- function(input, output, session) {
+  
+  # Reactive expression for the data subsetted to what the user selected
+  filteredData <- reactive({
+    quakes[quakes$mag >= input$range[1] & quakes$mag <= input$range[2],]
+  })
+  
+  # This reactive expression represents the palette function,
+  # which changes as the user makes selections in UI.
+  colorpal <- reactive({
+    colorNumeric(input$colors, quakes$mag)
+  })
+  
+  output$map <- renderLeaflet({
+    # Use leaflet() here, and only include aspects of the map that
+    # won't need to change dynamically (at least, not unless the
+    # entire map is being torn down and recreated).
+    leaflet(quakes) %>% addTiles() %>%
+      fitBounds(~min(long), ~min(lat), ~max(long), ~max(lat))
+  })
+  
+  # Incremental changes to the map (in this case, replacing the
+  # circles when a new color is chosen) should be performed in
+  # an observer. Each independent set of things that can change
+  # should be managed in its own observer.
+  observe({
+    pal <- colorpal()
+    
+    leafletProxy("map", data = filteredData()) %>%
+      clearShapes() %>%
+      addCircles(radius = ~10^mag/10, weight = 1, color = "#777777",
+                 fillColor = ~pal(mag), fillOpacity = 0.7, popup = ~paste(mag)
+      )
+  })
+  
+  # Use a separate observer to recreate the legend as needed.
+  observe({
+    proxy <- leafletProxy("map", data = quakes)
+    
+    # Remove any existing legend, and only if the legend is
+    # enabled, create a new one.
+    proxy %>% clearControls()
+    if (input$legend) {
+      pal <- colorpal()
+      proxy %>% addLegend(position = "bottomright",
+                          pal = pal, values = ~mag
+      )
+    }
+  })
+}
+
+shinyApp(ui, server)
+
+## Screenshot of a Shiny app
+
+proxy <- leafletProxy("mymap")
+
+# Fit the view to within these bounds (can also use setView)
+proxy %>% fitBounds(0, 0, 11, 11)
+
+# Create circles with layerIds of "A", "B", "C"...
+proxy %>% addCircles(1:10, 1:10, layerId = LETTERS[1:10])
+
+# Remove some of the circles
+proxy %>% removeShape(c("B", "F"))
+
+# Clear all circles (and other shapes)
+proxy %>% clearShapes()
+
+
+# <ch10> Show/Hide Layers-------
+
+leaflet() %>%
+  addTiles() %>%
+  addMarkers(data = coffee_shops, group = "Food & Drink") %>%
+  addMarkers(data = restaurants, group = "Food & Drink") %>%
+  addMarkers(data = restrooms, group = "Restrooms")
+
+
+outline <- quakes[chull(quakes$long, quakes$lat),]
+
+map <- leaflet(quakes) %>%
+  # Base groups
+  addTiles(group = "OSM (default)") %>%
+  addProviderTiles(providers$Stamen.Toner, group = "Toner") %>%
+  addProviderTiles(providers$Stamen.TonerLite, group = "Toner Lite") %>%
+  # Overlay groups
+  addCircles(~long, ~lat, ~10^mag/5, stroke = F, group = "Quakes") %>%
+  addPolygons(data = outline, lng = ~long, lat = ~lat,
+              fill = F, weight = 2, color = "#FFFFCC", group = "Outline") %>%
+  # Layers control
+  addLayersControl(
+    baseGroups = c("OSM (default)", "Toner", "Toner Lite"),
+    overlayGroups = c("Quakes", "Outline"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+map
+
+quakes <- quakes %>%
+  dplyr::mutate(mag.level = cut(mag,c(3,4,5,6),
+                                labels = c('>3 & <=4', '>4 & <=5', '>5 & <=6')))
+
+## With Marker Clusters
+
+quakes.df <- split(quakes, quakes$mag.level)
+
+l <- leaflet() %>% addTiles()
+
+names(quakes.df) %>%
+  purrr::walk( function(df) {
+    l <<- l %>%
+      addMarkers(data=quakes.df[[df]],
+                 lng=~long, lat=~lat,
+                 label=~as.character(mag),
+                 popup=~as.character(mag),
+                 group = df,
+                 clusterOptions = markerClusterOptions(removeOutsideVisibleBounds = F),
+                 labelOptions = labelOptions(noHide = F,
+                                             direction = 'auto'))
+  })
+
+l %>%
+  addLayersControl(
+    overlayGroups = names(quakes.df),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+
+
+# <ch10> Choropleths-------
+
+states <- geojsonio::geojson_read("json/us-states.geojson", what = "sp")
+
+class(states)
+
+# <ch11> Additional features
+
+## Leaflet Measure
+
+library(leaflet)
+
+m <- leaflet() %>% addTiles()
+
+m %>%
+  # Central Park
+  fitBounds(-73.9, 40.75, -73.95,40.8) %>%
+  addMeasure()
+
+m %>%
+  # Berlin, Germany
+  fitBounds(13.76134, 52.675499, 13.0884, 52.33812) %>%
+  addMeasure(
+    position = "bottomleft",
+    primaryLengthUnit = "meters",
+    primaryAreaUnit = "sqmeters",
+    activeColor = "#3D535D",
+    completedColor = "#7D4479")
+
+
+## Graticule
+
+library(leaflet)
+
+m <- leaflet() %>% addTiles() %>% setView(0,0,2)
+
+m %>% addGraticule()
+
+m %>% addGraticule(interval = 40, style = list(color = "#FF0000", weight = 1))
+
+m %>%
+  addGraticule(group = "Graticule") %>%
+  addLayersControl(overlayGroups = c("Graticule"),
+                   options = layersControlOptions(collapsed = FALSE))
+
+
+## Terminator (day/night indicator)
+
+library(leaflet)
+
+# Default Resolution
+leaflet() %>% addTiles() %>% addTerminator()
+
+# Custom Resolution + Custom Date and on a toggleable Layer
+leaflet() %>%
+  addTiles() %>%
+  addTerminator(
+    resolution=10,
+    time = "2020-11-09T00:00:00Z",
+    group = "daylight") %>%
+  addLayersControl(
+    overlayGroups = "daylight",
+    options = layersControlOptions(collapsed = FALSE))
+
+
+## Minimap
+
+library(leaflet)
+l <- leaflet() %>% setView(0,0,3)
+
+l %>%
+  addProviderTiles(providers$Esri.WorldStreetMap) %>%
+  addMiniMap()
+
+l %>%
+  addProviderTiles(providers$Esri.WorldStreetMap) %>%
+  addMiniMap(
+    tiles = providers$Esri.WorldStreetMap,
+    toggleDisplay = TRUE)
+
+## EasyButton
+
+library(leaflet)
+library(htmltools)
+library(htmlwidgets)
+
+leaflet() %>% addTiles() %>%
+  addEasyButton(easyButton(
+    icon="fa-globe", title="Zoom to Level 1",
+    onClick=JS("function(btn, map){ map.setZoom(1); }"))) %>%
+  addEasyButton(easyButton(
+    icon="fa-crosshairs", title="Locate Me",
+    onClick=JS("function(btn, map){ map.locate({setView: true}); }")))
+
+
+leaflet() %>% addTiles() %>%
+  addMarkers(data=quakes,
+             clusterOptions = markerClusterOptions(),
+             clusterId = "quakesCluster") %>%
+  addEasyButton(easyButton(
+    states = list(
+      easyButtonState(
+        stateName="unfrozen-markers",
+        icon="ion-toggle",
+        title="Freeze Clusters",
+        onClick = JS("
+          function(btn, map) {
+            var clusterManager =
+              map.layerManager.getLayer('cluster', 'quakesCluster');
+            clusterManager.freezeAtZoom();
+            btn.state('frozen-markers');
+          }")
+      ),
+      easyButtonState(
+        stateName="frozen-markers",
+        icon="ion-toggle-filled",
+        title="UnFreeze Clusters",
+        onClick = JS("
+          function(btn, map) {
+            var clusterManager =
+              map.layerManager.getLayer('cluster', 'quakesCluster');
+            clusterManager.unfreeze();
+            btn.state('unfrozen-markers');
+          }")
+      )
+    )
+  ))
+
+
+## Advanced Features
+
+l <- leaflet() %>% setView(0,0,3)
+
+esri <- grep("^Esri", providers, value = TRUE)
+
+for (provider in esri) {
+  l <- l %>% addProviderTiles(provider, group = provider)
+}
+
+
+l %>%
+  addLayersControl(baseGroups = names(esri),
+                   options = layersControlOptions(collapsed = FALSE)) %>%
+  addMiniMap(tiles = esri[[1]], toggleDisplay = TRUE,
+             position = "bottomleft") %>%
+  htmlwidgets::onRender("
+    function(el, x) {
+      var myMap = this;
+      myMap.on('baselayerchange',
+        function (e) {
+          myMap.minimap.changeLayer(L.tileLayer.provider(e.name));
+        })
+    }")
